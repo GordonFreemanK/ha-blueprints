@@ -1,0 +1,128 @@
+blueprint:
+  name: Motion + illuminance + time based light
+  description: Control a light based on motion detection and illuminance
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/motion_activated_light.yaml
+  domain: automation
+  input:
+    occupancy_sensors:
+      name: Occupancy sensors
+      description: Which sensors should trigger the automation
+      selector:
+        entity:
+          device_class: occupancy
+          multiple: true
+    occupancy_detected_delay:
+      name: Occupancy detected delay
+      description: How long to wait after occupancy is detected to turn on the light (to give time to the sensor to update illuminance)
+      selector:
+        duration:
+      default:
+        hours: 0
+        minutes: 0
+        seconds: 1
+    occupancy_cleared_delay:
+      name: Occupancy cleared delay
+      description: How long to wait after occupancy is cleared to turn off the light
+      selector:
+        duration:
+      default:
+        hours: 0
+        minutes: 0
+        seconds: 30
+    illuminance_sensors:
+      name: Illuminance sensors
+      description: Which sensors are used to measure illuminance
+      selector:
+        entity:
+          device_class: illuminance
+          multiple: true
+    illuminance_threshold:
+      name: Illuminance threshold
+      description: The maximum illuminance for which the automation will be triggered
+      selector:
+        number:
+          min: 0
+          max: 65535
+          unit_of_measurement: lx
+          mode: box
+      default: 10
+    lights:
+      name: Lights
+      description: The lights to toggle
+      selector:
+        target:
+          entity:
+            domain: light
+    night_start:
+      name: Night start
+      description: The time after which the light should be turned on with lower brightness
+      selector:
+        time:
+      default: '22:00:00'
+    night_end:
+      name: Night end
+      description: The time before which the light should be turned on with lower brightness
+      selector:
+        time:
+      default: '08:00:00'
+    day_brightness:
+      name: Day brightness
+      description: The brightness to turn on the light at during the day
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: '%'
+      default: 80
+    night_brightness:
+      name: Night brightness
+      description: The brightness to turn on the light at during the night
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: '%'
+      default: 20
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  occupancy_sensors: !input occupancy_sensors
+  illuminance_sensors: !input illuminance_sensors
+  illuminance_threshold: !input illuminance_threshold
+  night_start: !input night_start
+  night_end: !input night_end
+  day_brightness: !input day_brightness
+  night_brightness: !input night_brightness
+
+trigger:
+  - platform: state
+    entity_id: !input occupancy_sensors
+    from: "off"
+    to: "on"
+    for: !input occupancy_detected_delay
+condition:
+  - condition: template
+    value_template: >
+      {{ expand(illuminance_sensors) | map(attribute='state') | map('float') | min <= illuminance_threshold }}
+action:
+  - service: light.turn_on
+    data:
+      brightness_pct: >
+        {% set now=now().time() %}
+        {% set night_start_time=strptime(night_start,'%H:%M:%S').time() %}
+        {% set night_end_time=strptime(night_end,'%H:%M:%S').time() %}
+        {% if night_start_time < night_end_time %}
+          {{ night_brightness if now >= night_start_time and now < night_end_time else day_brightness }}
+        {% else %}
+          {{ night_brightness if now >= night_start_time or now < night_end_time else day_brightness }}
+        {% endif %}
+    target: !input lights
+  - wait_for_trigger:
+      - platform: template
+        value_template: >
+          {{ expand(occupancy_sensors) | selectattr('state','eq','on') | list | length == 0 }}
+        for: !input occupancy_cleared_delay
+  - service: light.turn_off
+    target: !input lights
