@@ -17,8 +17,6 @@ blueprint:
       selector:
         duration:
       default:
-        hours: 0
-        minutes: 0
         seconds: 1
     occupancy_cleared_delay:
       name: Occupancy cleared delay
@@ -26,8 +24,6 @@ blueprint:
       selector:
         duration:
       default:
-        hours: 0
-        minutes: 0
         seconds: 30
     illuminance_sensors:
       name: Illuminance sensors
