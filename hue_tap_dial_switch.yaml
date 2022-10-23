@@ -61,79 +61,80 @@ trigger:
   event_data:
     device_id: !input switch
 variables:
-  event: "{{ trigger.event.data.command }}"
-  scene: "{{ trigger.event.data.args[1] }}"
-  step_mode: "{{ trigger.event.data.params.step_mode }}"
-  step_size: "{{ trigger.event.data.params.step_size }}"
+  command: "{{ trigger.event.data.command }}"
   button_1_lights: !input button_1_lights
   button_2_lights: !input button_2_lights
   button_3_lights: !input button_3_lights
   button_4_lights: !input button_4_lights
 action:
-- choose:
-  - conditions:
-    - "{{ event == 'recall' }}"
-    sequence:
-    - variables:
-        lights: >
-          {% if scene == 1 %}
-            {{ button_1_lights }}
-          {% elif scene == 0 %}
-            {{ button_2_lights }}
-          {% elif scene == 5 %}
-            {{ button_3_lights }}
-          {% elif scene == 4 %}
-            {{ button_4_lights }}
-          {% endif %}
-        state: "{{ expand(lights) | selectattr('state','eq','on') | list | length > 0 }}"
-    - if:
-        - condition: template
-          value_template: "{{ state }}"
-      then:
-        - service: light.turn_off
-          target:
-            entity_id: "{{ lights }}"
-      else:
-        - service: light.turn_on
-          target:
-            entity_id: "{{ lights }}"
-          data:
-            brightness_pct: !input brightness
-    - repeat:
-        for_each: "{{ lights }}"
-        sequence:
-          - event: light_toggled
-            event_data:
-              state: "{{ not state }}"
-              entity_id: "{{ repeat.item }}"
-  - conditions:
-    - "{{ event == 'step_with_on_off' }}"
-    - "{{ step_mode == 'StepMode.Up' }}"
-    sequence:
-    - variables:
-        lights: >
-          {% set lights_all = expand([button_1_lights, button_2_lights, button_3_lights, button_4_lights]) %}
-          {% set lights_on = lights_all | selectattr('state','eq','on') | list %}
-          {% set lights_used = lights_on if lights_on | length > 0 else lights_all %}
-          {{ lights_used | map(attribute='entity_id') | unique | list }}
-    - service: light.turn_on
-      target:
-        entity_id: "{{ lights }}"
-      data:
-        brightness_step_pct: "{{ step_size }}"
-        transition: 1
-  - conditions:
-    - "{{ event == 'step_with_on_off' }}"
-    - "{{ step_mode == 'StepMode.Down' }}"
-    sequence:
-    - service: light.turn_on
-      target:
-        entity_id: >
-          {{ expand([button_1_lights, button_2_lights, button_3_lights, button_4_lights])
-            | selectattr('state','eq','on')
-            | map(attribute='entity_id')
-            | unique
-            | list }}
-      data:
-        brightness_step_pct: '{{ -step_size }}'
-        transition: 1
+  - choose:
+    - conditions: "{{ command == 'recall' }}"
+      sequence:
+      - variables:
+          scene: "{{ trigger.event.data.args[1] }}"
+          lights: >
+            {% if scene == 1 %}
+              {{ button_1_lights }}
+            {% elif scene == 0 %}
+              {{ button_2_lights }}
+            {% elif scene == 5 %}
+              {{ button_3_lights }}
+            {% elif scene == 4 %}
+              {{ button_4_lights }}
+            {% endif %}
+          state: "{{ expand(lights) | selectattr('state','eq','on') | list | length > 0 }}"
+      - if:
+          - condition: template
+            value_template: "{{ state }}"
+        then:
+          - service: light.turn_off
+            target:
+              entity_id: "{{ lights }}"
+        else:
+          - service: light.turn_on
+            target:
+              entity_id: "{{ lights }}"
+            data:
+              brightness_pct: !input brightness
+      - repeat:
+          for_each: "{{ lights }}"
+          sequence:
+            - event: light_toggled
+              event_data:
+                state: "{{ not state }}"
+                entity_id: "{{ repeat.item }}"
+    - conditions: "{{ command == 'step_with_on_off' }}"
+      sequence:
+      - variables:
+          step_mode: "{{ trigger.event.data.params.step_mode }}"
+          step_size: "{{ trigger.event.data.params.step_size }}"
+      - choose:
+        - conditions: "{{ step_mode == 'StepMode.Up' }}"
+          sequence:
+          - variables:
+              lights: >
+                {% set lights_all = expand([button_1_lights, button_2_lights, button_3_lights, button_4_lights]) %}
+                {% set lights_on = lights_all | selectattr('state','eq','on') | list %}
+                {% set lights_used = lights_on if lights_on | length > 0 else lights_all %}
+                {{ lights_used | map(attribute='entity_id') | unique | list }}
+          - service: light.turn_on
+            target:
+              entity_id: "{{ lights }}"
+            data:
+              brightness_step_pct: "{{ step_size }}"
+              transition: 1
+        - conditions: "{{ step_mode == 'StepMode.Down' }}"
+          sequence:
+          - variables:
+              lights: >
+                {{ expand([button_1_lights, button_2_lights, button_3_lights, button_4_lights])
+                  | selectattr('state','eq','on')
+                  | map(attribute='entity_id')
+                  | unique
+                  | list }}
+          - service: light.turn_on
+            target:
+              entity_id: "{{ lights }}"
+            data:
+              brightness_step_pct: '{{ -step_size }}'
+              transition: 1
