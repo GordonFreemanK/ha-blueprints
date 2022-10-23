@@ -4,14 +4,15 @@ blueprint:
   source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_tap_dial_switch.yaml
   domain: automation
   input:
-    switch:
-      name: Switch
-      description: The switch that will trigger the automation
+    switches:
+      name: Switches
+      description: The switches that will trigger the automation
       selector:
         device:
           integration: zha
           manufacturer: Signify Netherlands B.V.
           model: RDM002
+          multiple: true
     button_1_lights:
       name: Button 1 lights
       description: The lights to toggle with Button 1
@@ -58,15 +59,19 @@ max_exceeded: silent
 trigger:
 - platform: event
   event_type: zha_event
-  event_data:
-    device_id: !input switch
 
 variables:
   command: "{{ trigger.event.data.command }}"
+  device_id: "{{ trigger.event.data.device_id }}"
+  switches: !input switches
   button_1_lights: !input button_1_lights
   button_2_lights: !input button_2_lights
   button_3_lights: !input button_3_lights
   button_4_lights: !input button_4_lights
+
+condition:
+  - condition: template
+    value_template: "{{ device_id in switches }}"
 
 action:
   - choose:
