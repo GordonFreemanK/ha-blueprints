@@ -12,7 +12,6 @@ blueprint:
           integration: zha
           manufacturer: Signify Netherlands B.V.
           model: RDM002
-          multiple: false
     button_1_lights:
       name: Button 1 lights
       description: The lights to toggle with Button 1
@@ -55,17 +54,20 @@ blueprint:
       default: 80
 mode: restart
 max_exceeded: silent
+
 trigger:
 - platform: event
   event_type: zha_event
   event_data:
     device_id: !input switch
+
 variables:
   command: "{{ trigger.event.data.command }}"
   button_1_lights: !input button_1_lights
   button_2_lights: !input button_2_lights
   button_3_lights: !input button_3_lights
   button_4_lights: !input button_4_lights
+
 action:
   - choose:
     - conditions: "{{ command == 'recall' }}"

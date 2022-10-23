@@ -1,0 +1,54 @@
+blueprint:
+  name: Hue button
+  description: Toggle lights with Hue buttons
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_button.yaml
+  domain: automation
+  input:
+    buttons:
+      name: Buttons
+      description: The buttons that toggle the lights
+      selector:
+        device:
+          integration: zha
+          manufacturer: Signify Netherlands B.V.
+          model: ROM001
+          multiple: true
+    light:
+      name: Light
+      description: The lights to toggle with the buttons
+      selector:
+        entity:
+          domain: light
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: event
+  event_type: zha_event
+  event_data:
+    cluster_id: 6
+
+variables:
+  command: "{{ trigger.event.data.command }}"
+  device_id: "{{ trigger.event.data.device_id }}"
+  buttons: !input buttons
+  light: !input light
+
+condition:
+  - condition: template
+    value_template: "{{ device_id in buttons }}"
+
+action:
+  - choose:
+    - conditions: "{{ command == 'on' }}"
+      sequence:
+      - event: light_toggled
+        event_data:
+          state: on
+          entity_id: !input light
+    - conditions: "{{ command == 'off_with_effect' }}"
+      sequence:
+      - event: light_toggled
+        event_data:
+          state: off
+          entity_id: !input light
