@@ -20,28 +20,12 @@ blueprint:
         entity:
           domain: light
           multiple: true
-    button_1_automations:
-      name: Button 1 automations
-      description: The automations to suspend when Button 1 lights are turned on
-      selector:
-        entity:
-          domain: automation
-          multiple: true
-      default: []
     button_2_lights:
       name: Button 2 lights
       description: The lights to toggle with Button 2
       selector:
         entity:
           domain: light
-          multiple: true
-      default: []
-    button_2_automations:
-      name: Button 2 automations
-      description: The automations to suspend when Button 2 lights are turned on
-      selector:
-        entity:
-          domain: automation
           multiple: true
       default: []
     button_3_lights:
@@ -52,28 +36,12 @@ blueprint:
           domain: light
           multiple: true
       default: []
-    button_3_automations:
-      name: Button 3 automations
-      description: The automations to suspend when Button 3 lights are turned on
-      selector:
-        entity:
-          domain: automation
-          multiple: true
-      default: []
     button_4_lights:
       name: Button 4 lights
       description: The lights to toggle with Button 4
       selector:
         entity:
           domain: light
-          multiple: true
-      default: []
-    button_4_automations:
-      name: Button 4 automations
-      description: The automations to suspend when Button 4 lights are turned on
-      selector:
-        entity:
-          domain: automation
           multiple: true
       default: []
     brightness:
@@ -85,33 +53,22 @@ blueprint:
           max: 100
           unit_of_measurement: '%'
       default: 80
-    automation_suspension_duration:
-      name: Automation suspension duration
-      description: The amount of time to suspend automations when lights are turned on
-      selector:
-        duration:
-      default:
-        minutes: 5
 mode: restart
 max_exceeded: silent
+trigger:
+- platform: event
+  event_type: zha_event
+  event_data:
+    device_id: !input switch
 variables:
   event: "{{ trigger.event.data.command }}"
   scene: "{{ trigger.event.data.args[1] }}"
   step_mode: "{{ trigger.event.data.params.step_mode }}"
   step_size: "{{ trigger.event.data.params.step_size }}"
   button_1_lights: !input button_1_lights
-  button_1_automations: !input button_1_automations
   button_2_lights: !input button_2_lights
-  button_2_automations: !input button_2_automations
   button_3_lights: !input button_3_lights
-  button_3_automations: !input button_3_automations
   button_4_lights: !input button_4_lights
-  button_4_automations: !input button_4_automations
-trigger:
-- platform: event
-  event_type: zha_event
-  event_data:
-    device_id: !input switch
 action:
 - choose:
   - conditions:
@@ -128,43 +85,27 @@ action:
           {% elif scene == 4 %}
             {{ button_4_lights }}
           {% endif %}
-        automations: >
-          {% if scene == 1 %}
-            {{ button_1_automations }}
-          {% elif scene == 0 %}
-            {{ button_2_automations }}
-          {% elif scene == 5 %}
-            {{ button_3_automations }}
-          {% elif scene == 4 %}
-            {{ button_4_automations }}
-          {% endif %}
+        state: "{{ expand(lights) | selectattr('state','eq','on') | list | length > 0 }}"
     - if:
         - condition: template
-          value_template: "{{ expand(lights) | selectattr('state','eq','on') | list | length == 0 }}"
+          value_template: "{{ state }}"
       then:
+        - service: light.turn_off
+          target:
+            entity_id: "{{ lights }}"
+      else:
         - service: light.turn_on
           target:
             entity_id: "{{ lights }}"
           data:
             brightness_pct: !input brightness
-        - if:
-          - condition: template
-            value_template: "{{ expand(automations) | selectattr('state','eq','on') | list | length > 0 }}"
-          then:
-          - service: automation.turn_off
-            target:
-              entity_id: "{{ automations }}"
-          - delay: !input automation_suspension_duration
-          - service: automation.turn_on
-            target:
-              entity_id: "{{ automations }}"
-      else:
-        - service: light.turn_off
-          target:
-            entity_id: "{{ lights }}"
-        - service: automation.turn_on
-          target:
-            entity_id: "{{ automations }}"
+    - repeat:
+        for_each: "{{ lights }}"
+        sequence:
+          - event: light_toggled
+            event_data:
+              state: "{{ not state }}"
+              entity_id: "{{ repeat.item }}"
   - conditions:
     - "{{ event == 'step_with_on_off' }}"
     - "{{ step_mode == 'StepMode.Up' }}"

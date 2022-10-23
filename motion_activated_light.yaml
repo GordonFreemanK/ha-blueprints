@@ -83,6 +83,13 @@ blueprint:
 mode: restart
 max_exceeded: silent
 
+trigger:
+  - platform: state
+    entity_id: !input occupancy_sensors
+    from: 'off'
+    to: 'on'
+    for: !input occupancy_detected_delay
+
 variables:
   occupancy_sensors: !input occupancy_sensors
   illuminance_sensors: !input illuminance_sensors
@@ -92,16 +99,10 @@ variables:
   day_brightness: !input day_brightness
   night_brightness: !input night_brightness
 
-trigger:
-  - platform: state
-    entity_id: !input occupancy_sensors
-    from: "off"
-    to: "on"
-    for: !input occupancy_detected_delay
 condition:
   - condition: template
-    value_template: >
-      {{ expand(illuminance_sensors) | map(attribute='state') | map('float') | min <= illuminance_threshold }}
+    value_template: "{{ expand(illuminance_sensors) | map(attribute='state') | map('float') | min <= illuminance_threshold }}"
+
 action:
   - service: light.turn_on
     data:
@@ -117,8 +118,7 @@ action:
     target: !input lights
   - wait_for_trigger:
       - platform: template
-        value_template: >
-          {{ expand(occupancy_sensors) | selectattr('state','eq','on') | list | length == 0 }}
+        value_template: "{{ expand(occupancy_sensors) | selectattr('state','eq','on') | list | length == 0 }}"
         for: !input occupancy_cleared_delay
   - service: light.turn_off
     target: !input lights

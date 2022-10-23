@@ -1,0 +1,54 @@
+blueprint:
+  name: Motion activation suspension
+  description: Suspends a motion activation automation when a light is switched on
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/motion_activation_suspension.yaml
+  domain: automation
+  input:
+    light:
+      name: Light
+      description: The light that will suspend the automations
+      selector:
+        entity:
+          domain: light
+    automations:
+      name: Automations
+      description: The automations that should be suspended when a light is switched on
+      selector:
+        entity:
+          domain: automation
+          multiple: true
+    duration:
+      name: Duration
+      description: The duration of the suspension
+      selector:
+        duration:
+      default:
+        minutes: 5
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: event
+  event_type: light_toggled
+  event_data:
+    entity_id: !input light
+
+action:
+  - if:
+    - condition: template
+      value_template: "{{ trigger.event.data.state }}"
+    then:
+    - service: automation.turn_off
+      target:
+        entity_id: !input automations
+    - delay: !input duration
+    - service: light.turn_off
+      target:
+        entity_id: !input light
+    - service: automation.turn_on
+      target:
+        entity_id: !input automations
+    else:
+    - service: automation.turn_on
+      target:
+        entity_id: !input automations
