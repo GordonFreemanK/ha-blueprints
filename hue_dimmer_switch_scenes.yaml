@@ -1,6 +1,6 @@
 blueprint:
-  name: Hue dimmer switch
-  description: Toggle lights with Hue dimmer switches
+  name: Hue dimmer switch with scenes
+  description: Toggle lights and activate scenes with Hue dimmer switches
   source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_dimmer_switch_scenes.yaml
   domain: automation
   input:

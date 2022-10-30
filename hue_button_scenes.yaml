@@ -1,0 +1,95 @@
+blueprint:
+  name: Hue button with scenes
+  description: Toggle lights and activate scenes with Hue buttons
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_button_scenes.yaml
+  domain: automation
+  input:
+    buttons:
+      name: Buttons
+      description: The buttons that toggle the lights
+      selector:
+        device:
+          integration: zha
+          manufacturer: Signify Netherlands B.V.
+          model: ROM001
+          multiple: true
+    scenes:
+      name: Scenes
+      description: The scenes to cycle with the buttons
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+    scene_input:
+      name: Scene input
+      description: The input in which to store the current scene
+      selector:
+        entity:
+          domain: input_text
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: event
+  event_type: zha_event
+  event_data:
+    cluster_id: 64512
+
+variables:
+  device_id: "{{ trigger.event.data.device_id }}"
+  command: "{{ trigger.event.data.command }}"
+  buttons: !input buttons
+  scenes: !input scenes
+  scene_input: !input scene_input
+  entities: >
+    {% set scene_entities = expand(scenes) | map(attribute='attributes.entity_id') %}
+    {{ expand(scene_entities) | map(attribute='entity_id') | list }}
+
+condition:
+  - condition: template
+    value_template: "{{ device_id in buttons }}"
+  - condition: template
+    value_template: "{{ command in ['on_short_release','on_hold'] }}"
+
+action:
+  - variables:
+      entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
+      entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+      entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
+      entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+  - choose:
+    - conditions: "{{ command == 'on_short_release' }}"
+      sequence:
+      - variables:
+          scene: >
+            {% set ns = namespace(index=0) %}
+            {% set scene = states(scene_input) %}
+            {% if (entities_light_on | length > 0) and (scene in scenes) %}
+              {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
+            {% endif %}
+            {{ scenes[ns.index] }}
+      - service: scene.turn_on
+        target:
+          entity_id: "{{ scene }}"
+        data:
+          transition: 1
+      - service: input_text.set_value
+        data:
+          value: "{{ scene }}"
+        target:
+          entity_id: !input scene_input
+    - conditions: "{{ command == 'on_hold' }}"
+      sequence:
+      - service: light.turn_off
+        target:
+          entity_id: "{{ entities_light_on }}"
+        data:
+          transition: 1
+      - service: switch.turn_off
+        target:
+          entity_id: "{{ entities_switch_on }}"
+      - service: input_text.set_value
+        data:
+          value: ''
+        target:
+          entity_id: !input scene_input
