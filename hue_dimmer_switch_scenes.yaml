@@ -34,33 +34,38 @@ trigger:
   event_type: zha_event
 
 variables:
-  data: "{{ trigger.event.data }}"
+  device_id: "{{ trigger.event.data.device_id }}"
+  command: "{{ trigger.event.data.command }}"
   switches: !input switches
   scenes: !input scenes
   scene_input: !input scene_input
-  entities_on: >
+  entities: >
     {% set scene_entities = expand(scenes) | map(attribute='attributes.entity_id') %}
-    {{ expand(scene_entities)
-      | selectattr('state','eq','on')
-      | map(attribute='entity_id')
-      | unique
-      | list }}
+    {{ expand(scene_entities) | map(attribute='entity_id') | list }}
 
 condition:
   - condition: template
-    value_template: "{{ data.device_id in switches }}"
+    value_template: "{{ device_id in switches }}"
+  - condition: template
+    value_template: "{{ command in ['on','off_with_effect','step','up_hold','down_hold','stop'] }}"
 
 action:
+  - variables:
+      entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
+      entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+      entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
+      entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
   - choose:
-    - conditions:
-        - "{{ data.cluster_id == 6 }}"
-        - "{{ data.command == 'on' }}"
+    - conditions: "{{ command == 'on' }}"
       sequence:
       - variables:
           scene: >
+            {% set ns = namespace(index=0) %}
             {% set scene = states(scene_input) %}
-            {% set index = (scenes.index(scene) + 1) % (scenes | length) if scene in scenes else 0 %}
-            {{ scenes[index] }}
+            {% if (entities_light_on | length > 0) and (scene in scenes) %}
+              {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
+            {% endif %}
+            {{ scenes[ns.index] }}
       - service: scene.turn_on
         target:
           entity_id: "{{ scene }}"
@@ -71,37 +76,69 @@ action:
           value: "{{ scene }}"
         target:
           entity_id: !input scene_input
-    - conditions:
-        - "{{ data.cluster_id == 6 }}"
-        - "{{ data.command == 'off_with_effect' }}"
+    - conditions: "{{ command == 'off_with_effect' }}"
       sequence:
       - service: light.turn_off
         target:
-          entity_id: "{{ entities_on | selectattr('domain','eq','light') | list }}"
+          entity_id: "{{ entities_light_on }}"
+        data:
+          transition: 1
       - service: switch.turn_off
         target:
-          entity_id: "{{ entities_on | selectattr('domain','eq','switch') | list }}"
+          entity_id: "{{ entities_switch_on }}"
       - service: input_text.set_value
         data:
           value: ''
         target:
           entity_id: !input scene_input
-    - conditions:
-        - "{{ data.cluster_id == 8 }}"
-        - "{{ data.command == 'step' }}"
-      sequence:
-      - variables:
-          step_size: "{{ data.params.step_size if data.params.step_mode == 0 else -data.params.step_size }}"
-      - service: light.turn_on
-        target: "{{ expand(entities_on)-30 | selectattr('domain','eq','light') | list }}"
-        data:
-          brightness_step_pct: "{{ step_size }}"
-          transition: "{{ data.params.transition_time }}"
-    - conditions:
-        - "{{ data.cluster_id == 64512 }}"
-        - "{{ data.command in ['up_short_release','up_long_release'] }}"
+    - conditions: "{{ command == 'step' }}"
       sequence:
       - service: light.turn_on
-        target: "{{ expand(entities_on) | selectattr('domain','eq','light') | list }}"
+        target:
+          entity_id: "{{ entities_light_on }}"
         data:
-          brightness_step_pct: 0
+          brightness_step: >
+            {% set step_size = trigger.event.data.params.step_size %}
+            {% set step_mode = trigger.event.data.params.step_mode %}
+            {{ iif(step_mode == 0, step_size, -step_size) }}
+          transition: 1
+    - conditions: "{{ command in ['up_hold','down_hold'] }}"
+      sequence:
+      - service: light.turn_on
+        target:
+          entity_id: "{{ entities_light_on }}"
+        data:
+          brightness_step: "{{ iif(command == 'up_hold',255,-255) }}"
+          transition: 5
+    - conditions: "{{ command == 'stop' }}"
+      sequence:
+      - repeat:
+          for_each: "{{ entities_light }}"
+          sequence:
+          - variables:
+              group_id_captures: "{{ repeat.item | regex_findall('^.+_zha_group_(0x[\\da-f]+)$') }}"
+          - if:
+              - condition: template
+                value_template: "{{ group_id_captures | length > 0 }}"
+            then:
+              - service: zha.issue_zigbee_group_command
+                data:
+                  group: "{{ group_id_captures | first | int(base=16) }}"
+                  cluster_id: 8
+                  cluster_type: in
+                  command: 3
+            else:
+              - variables:
+                  zha_identifiers: "{{ device_attr(repeat.item, 'identifiers') | selectattr(0,'eq','zha') | map(attribute=1) | list }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ zha_identifiers | length > 0 }}"
+                then:
+                  - service: zha.issue_zigbee_cluster_command
+                    data:
+                      ieee: "{{ zha_identifiers | first }}"
+                      endpoint_id: 11
+                      cluster_id: 8
+                      cluster_type: in
+                      command: 3
+                      command_type: server
