@@ -52,9 +52,7 @@ condition:
 action:
   - variables:
       entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
-      entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
       entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
-      entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
   - choose:
     - conditions: "{{ command == 'on' }}"
       sequence:
@@ -62,7 +60,8 @@ action:
           scene: >
             {% set ns = namespace(index=0) %}
             {% set scene = states(scene_input) %}
-            {% if (entities_light_on | length > 0) and (scene in scenes) %}
+            {% set entities_light_on = expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list %}
+            {% if (scene in scenes) and (entities_light_on | length > 0) %}
               {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
             {% endif %}
             {{ scenes[ns.index] }}
@@ -80,12 +79,12 @@ action:
       sequence:
       - service: light.turn_off
         target:
-          entity_id: "{{ entities_light_on }}"
+          entity_id: "{{ entities_light }}"
         data:
           transition: 1
       - service: switch.turn_off
         target:
-          entity_id: "{{ entities_switch_on }}"
+          entity_id: "{{ entities_switch }}"
       - service: input_text.set_value
         data:
           value: ''
@@ -95,7 +94,7 @@ action:
       sequence:
       - service: light.turn_on
         target:
-          entity_id: "{{ entities_light_on }}"
+          entity_id: "{{ entities_light }}"
         data:
           brightness_step: >
             {% set step_size = trigger.event.data.params.step_size %}
@@ -106,7 +105,7 @@ action:
       sequence:
       - service: light.turn_on
         target:
-          entity_id: "{{ entities_light_on }}"
+          entity_id: "{{ entities_light }}"
         data:
           brightness_step: "{{ iif(command == 'up_hold',255,-255) }}"
           transition: 5
