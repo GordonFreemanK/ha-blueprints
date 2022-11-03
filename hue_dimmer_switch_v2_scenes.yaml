@@ -1,0 +1,180 @@
+blueprint:
+  name: Hue dimmer switch v2 with scenes
+  description: Toggle lights and activate scenes with Hue dimmer switches
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/hue_dimmer_switch_v2_scenes.yaml
+  domain: automation
+  input:
+    switches:
+      name: Switches
+      description: The switches that toggle the lights
+      selector:
+        device:
+          integration: zha
+          manufacturer: Signify Netherlands B.V.
+          model: RWL022
+          multiple: true
+    scenes:
+      name: Scenes
+      description: The scenes to cycle with the switches
+      selector:
+        entity:
+          domain: scene
+          multiple: true
+    scene_input:
+      name: Scene input
+      description: The input in which to store the current scene
+      selector:
+        entity:
+          domain: input_text
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: event
+  event_type: zha_event
+
+variables:
+  device_id: "{{ trigger.event.data.device_id }}"
+  command: "{{ trigger.event.data.command }}"
+  switches: !input switches
+  scenes: !input scenes
+  scene_input: !input scene_input
+  entities: >
+    {% set scene_entities = expand(scenes) | map(attribute='attributes.entity_id') %}
+    {{ expand(scene_entities) | map(attribute='entity_id') | list }}
+
+condition:
+  - condition: template
+    value_template: "{{ device_id in switches }}"
+  - condition: template
+    value_template: "{{ command in ['on','off_with_effect','recall','step'] }}"
+
+action:
+  - variables:
+      entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
+      entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+      entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
+      entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+  - choose:
+    - conditions: "{{ command == 'on' }}"
+      sequence:
+      - service: scene.turn_on
+        target:
+          entity_id: "{{ scenes[0] }}"
+        data:
+          transition: 1
+      - service: input_text.set_value
+        data:
+          value: "{{ scenes[0] }}"
+        target:
+          entity_id: !input scene_input
+    - conditions: "{{ command == 'off_with_effect' }}"
+      sequence:
+      - service: switch.turn_off
+        target:
+          entity_id: "{{ entities_switch }}"
+      - service: light.turn_off
+        target:
+          entity_id: "{{ entities_light }}"
+        data:
+          transition: 1
+      - service: input_text.set_value
+        data:
+          value: ''
+        target:
+          entity_id: !input scene_input
+    - conditions: "{{ command == 'recall' and ((entities_switch_on | length > 0) or (entities_light_on | length > 0)) }}"
+      sequence:
+      - variables:
+          scene: >
+            {% set ns = namespace(index=0) %}
+            {% set scene = states(scene_input) %}
+            {% if (scene in scenes) %}
+              {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
+            {% endif %}
+            {{ scenes[ns.index] }}
+      - service: scene.turn_on
+        target:
+          entity_id: "{{ scene }}"
+        data:
+          transition: 1
+      - service: input_text.set_value
+        data:
+          value: "{{ scene }}"
+        target:
+          entity_id: !input scene_input
+    - conditions: "{{ command == 'step' }}"
+      sequence:
+      - variables:
+          step_mode: "{{ trigger.event.data.params.step_mode }}"
+          step_size: "{{ trigger.event.data.params.step_size }}"
+      - if:
+          - condition: template
+            value_template: "{{ step_mode == 'StepMode.Up' }}"
+        then:
+          - service: light.turn_on
+            target:
+              entity_id: "{{ entities_light_on }}"
+            data:
+              brightness_step: "{{ step_size }}"
+              transition: 1
+        else:
+          - service: light.turn_on
+            target:
+              entity_id: "{{ entities_light }}"
+            data:
+              brightness_step: "{{ -step_size }}"
+              transition: 1
+    - conditions: "{{ command == 'up_hold' }}"
+      sequence:
+      - service: light.turn_on
+        target:
+          entity_id: "{{ entities_light_on }}"
+        data:
+          brightness_step: 255
+          transition: 5
+    - conditions: "{{ command == 'down_hold' }}"
+      sequence:
+      - service: light.turn_on
+        target:
+          entity_id: "{{ entities_light }}"
+        data:
+          brightness_step: -255
+          transition: 5
+    - conditions: "{{ command == 'stop' }}"
+      sequence:
+      - repeat:
+          for_each: "{{ entities_light }}"
+          sequence:
+          - variables:
+              zha_identifiers: "{{ device_attr(repeat.item, 'identifiers') | selectattr(0,'eq','zha') | map(attribute=1) | list }}"
+          - if:
+              - condition: template
+                value_template: "{{ zha_identifiers | length > 0 }}"
+            then:
+              - variables:
+                  group_id_captures: "{{ repeat.item | regex_findall('^.+_zha_group_(0x[\\da-f]+)$') }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ group_id_captures | length > 0 }}"
+                then:
+                  - service: zha.issue_zigbee_group_command
+                    data:
+                      group: "{{ group_id_captures | first | int(base=16) }}"
+                      cluster_id: 8
+                      cluster_type: in
+                      command: 3
+                else:
+                  - service: zha.issue_zigbee_cluster_command
+                    data:
+                      ieee: "{{ zha_identifiers | first }}"
+                      endpoint_id: 11
+                      cluster_id: 8
+                      cluster_type: in
+                      command: 3
+                      command_type: server
+      - delay:
+          seconds: 5
+      - service: homeassistant.update_entity
+        target:
+          entity_id: "{{ entities_light }}"
