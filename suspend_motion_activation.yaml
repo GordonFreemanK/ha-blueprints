@@ -31,19 +31,20 @@ max_exceeded: silent
 trigger:
 - platform: event
   event_type: light_toggled
+- platform: homeassistant
+  event: start
 
 variables:
-  entity_id: "{{ trigger.event.data.entity_id }}"
   lights: !input lights
 
 condition:
 - condition: template
-  value_template: "{{ entity_id in lights }}"
+  value_template: "{{ trigger.platform == 'homeassistant' or trigger.event.data.entity_id in lights }}"
 
 action:
   - if:
     - condition: template
-      value_template: "{{ trigger.event.data.state }}"
+      value_template: "{{ trigger.platform == 'event' and trigger.event.data.state }}"
     then:
     - service: automation.turn_off
       target:

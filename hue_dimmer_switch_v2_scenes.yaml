@@ -83,26 +83,41 @@ action:
           value: ''
         target:
           entity_id: !input scene_input
-    - conditions: "{{ command == 'recall' and ((entities_switch_on | length > 0) or (entities_light_on | length > 0)) }}"
+    - conditions: "{{ command == 'recall' }}"
       sequence:
-      - variables:
-          scene: >
-            {% set ns = namespace(index=0) %}
-            {% set scene = states(scene_input) %}
-            {% if (scene in scenes) %}
-              {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
-            {% endif %}
-            {{ scenes[ns.index] }}
-      - service: scene.turn_on
-        target:
-          entity_id: "{{ scene }}"
-        data:
-          transition: 1
-      - service: input_text.set_value
-        data:
-          value: "{{ scene }}"
-        target:
-          entity_id: !input scene_input
+      - choose:
+        - conditions: "{{ (entities_switch_on | length > 0) or (entities_light_on | length > 0) }}"
+          sequence:
+          - variables:
+              scene: >
+                {% set ns = namespace(index=0) %}
+                {% set scene = states(scene_input) %}
+                {% if (scene in scenes) %}
+                  {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
+                {% endif %}
+                {{ scenes[ns.index] }}
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ scene }}"
+            data:
+              transition: 1
+          - service: input_text.set_value
+            data:
+              value: "{{ scene }}"
+            target:
+              entity_id: !input scene_input
+        - conditions: "{{ scenes | length > 1 }}"
+          sequence:
+          - service: scene.turn_on
+            target:
+              entity_id: "{{ scenes[1] }}"
+            data:
+              transition: 1
+          - service: input_text.set_value
+            data:
+              value: "{{ scenes[1] }}"
+            target:
+              entity_id: !input scene_input
     - conditions: "{{ command == 'step' }}"
       sequence:
       - variables:
