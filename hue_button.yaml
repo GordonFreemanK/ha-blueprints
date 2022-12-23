@@ -13,12 +13,22 @@ blueprint:
           manufacturer: Signify Netherlands B.V.
           model: ROM001
           multiple: true
-    light:
-      name: Light
+    lights:
+      name: Lights
       description: The lights to toggle with the buttons
       selector:
         entity:
           domain: light
+          multiple: true
+    brightness:
+      name: Brightness
+      description: The brightness to turn on the lights at
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: '%'
+      default: 80
 mode: restart
 max_exceeded: silent
 
@@ -26,29 +36,38 @@ trigger:
 - platform: event
   event_type: zha_event
   event_data:
-    cluster_id: 6
+    cluster_id: 64512
+    command: on_short_release
 
 variables:
-  command: "{{ trigger.event.data.command }}"
   device_id: "{{ trigger.event.data.device_id }}"
+  command: "{{ trigger.event.data.command }}"
   buttons: !input buttons
-  light: !input light
+  lights: !input lights
+  state: "{{ expand(lights) | selectattr('state','eq','on') | list | length > 0 }}"
 
 condition:
-  - condition: template
-    value_template: "{{ device_id in buttons }}"
+- condition: template
+  value_template: "{{ device_id in buttons }}"
 
 action:
-  - choose:
-    - conditions: "{{ command == 'on' }}"
-      sequence:
-      - event: light_toggled
-        event_data:
-          state: on
-          entity_id: !input light
-    - conditions: "{{ command == 'off_with_effect' }}"
-      sequence:
-      - event: light_toggled
-        event_data:
-          state: off
-          entity_id: !input light
+- if:
+  - condition: template
+    value_template: "{{ state }}"
+  then:
+  - service: light.turn_off
+    target:
+      entity_id: "{{ lights }}"
+  else:
+  - service: light.turn_on
+    target:
+      entity_id: "{{ lights }}"
+    data:
+      brightness_pct: !input brightness
+- repeat:
+    for_each: "{{ lights }}"
+    sequence:
+    - event: light_toggled
+      event_data:
+        state: "{{ not state }}"
+        entity_id: "{{ repeat.item }}"
