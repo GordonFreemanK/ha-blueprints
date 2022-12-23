@@ -44,32 +44,26 @@ variables:
     {{ expand(scene_entities) | map(attribute='entity_id') | list }}
 
 condition:
-  - condition: template
-    value_template: "{{ device_id in switches }}"
-  - condition: template
-    value_template: "{{ command in ['on','off_with_effect','recall','step'] }}"
+- condition: template
+  value_template: "{{ device_id in switches }}"
+- condition: template
+  value_template: "{{ command in ['on_short_release','recall','step'] }}"
 
 action:
-  - variables:
-      entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
-      entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
-      entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
-      entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
-  - choose:
-    - conditions: "{{ command == 'on' }}"
-      sequence:
-      - service: scene.turn_on
-        target:
-          entity_id: "{{ scenes[0] }}"
-        data:
-          transition: 1
-      - service: input_text.set_value
-        data:
-          value: "{{ scenes[0] }}"
-        target:
-          entity_id: !input scene_input
-    - conditions: "{{ command == 'off_with_effect' }}"
-      sequence:
+- variables:
+    entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
+    entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+    entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
+    entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+- choose:
+  - conditions: "{{ command == 'on_short_release' }}"
+    sequence:
+    - variables:
+        state: "{{ entities_light_on | length > 0 }}"
+    - if:
+      - condition: template
+        value_template: "{{ state }}"
+      then:
       - service: switch.turn_off
         target:
           entity_id: "{{ entities_switch }}"
@@ -83,60 +77,78 @@ action:
           value: ''
         target:
           entity_id: !input scene_input
-    - conditions: "{{ command == 'recall' }}"
-      sequence:
-      - choose:
-        - conditions: "{{ (entities_switch_on | length > 0) or (entities_light_on | length > 0) }}"
-          sequence:
-          - variables:
-              scene: >
-                {% set ns = namespace(index=0) %}
-                {% set scene = states(scene_input) %}
-                {% if (scene in scenes) %}
-                  {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
-                {% endif %}
-                {{ scenes[ns.index] }}
-          - service: scene.turn_on
-            target:
-              entity_id: "{{ scene }}"
-            data:
-              transition: 1
-          - service: input_text.set_value
-            data:
-              value: "{{ scene }}"
-            target:
-              entity_id: !input scene_input
-        - conditions: "{{ scenes | length > 1 }}"
-          sequence:
-          - service: scene.turn_on
-            target:
-              entity_id: "{{ scenes[1] }}"
-            data:
-              transition: 1
-          - service: input_text.set_value
-            data:
-              value: "{{ scenes[1] }}"
-            target:
-              entity_id: !input scene_input
-    - conditions: "{{ command == 'step' }}"
-      sequence:
+      else:
+      - service: scene.turn_on
+        target:
+          entity_id: "{{ scenes[0] }}"
+        data:
+          transition: 1
+      - service: input_text.set_value
+        data:
+          value: "{{ scenes[0] }}"
+        target:
+          entity_id: !input scene_input
+    - repeat:
+        for_each: "{{ entities_light }}"
+        sequence:
+        - event: light_toggled
+          event_data:
+            state: "{{ not state }}"
+            entity_id: "{{ repeat.item }}"
+  - conditions: "{{ command == 'recall' }}"
+    sequence:
+    - choose:
+      - conditions: "{{ (entities_switch_on | length > 0) or (entities_light_on | length > 0) }}"
+        sequence:
+        - variables:
+            scene: >
+              {% set ns = namespace(index=0) %}
+              {% set scene = states(scene_input) %}
+              {% if (scene in scenes) %}
+                {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
+              {% endif %}
+              {{ scenes[ns.index] }}
+        - service: scene.turn_on
+          target:
+            entity_id: "{{ scene }}"
+          data:
+            transition: 1
+        - service: input_text.set_value
+          data:
+            value: "{{ scene }}"
+          target:
+            entity_id: !input scene_input
+      - conditions: "{{ scenes | length > 1 }}"
+        sequence:
+        - service: scene.turn_on
+          target:
+            entity_id: "{{ scenes[1] }}"
+          data:
+            transition: 1
+        - service: input_text.set_value
+          data:
+            value: "{{ scenes[1] }}"
+          target:
+            entity_id: !input scene_input
+  - conditions: "{{ command == 'step' }}"
+    sequence:
       - variables:
           step_mode: "{{ trigger.event.data.params.step_mode }}"
           step_size: "{{ trigger.event.data.params.step_size }}"
       - if:
-          - condition: template
-            value_template: "{{ step_mode == 'StepMode.Up' }}"
+        - condition: template
+          value_template: "{{ step_mode == 'StepMode.Up' }}"
         then:
-          - service: light.turn_on
-            target:
-              entity_id: "{{ entities_light_on }}"
-            data:
-              brightness_step: "{{ step_size }}"
-              transition: 1
+        - service: light.turn_on
+          target:
+            entity_id: "{{ entities_light_on }}"
+          data:
+            brightness_step: "{{ step_size }}"
+            transition: 1
         else:
-          - service: light.turn_on
-            target:
-              entity_id: "{{ entities_light }}"
-            data:
-              brightness_step: "{{ -step_size }}"
-              transition: 1
+        - service: light.turn_on
+          target:
+            entity_id: "{{ entities_light }}"
+          data:
+            brightness_step: "{{ -step_size }}"
+            transition: 1
