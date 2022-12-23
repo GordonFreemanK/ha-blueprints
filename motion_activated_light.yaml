@@ -1,5 +1,5 @@
 blueprint:
-  name: Motion + illuminance + time based light
+  name: Motion activated light
   description: Control a light based on motion detection and illuminance
   source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/motion_activated_light.yaml
   domain: automation
@@ -84,11 +84,11 @@ mode: restart
 max_exceeded: silent
 
 trigger:
-  - platform: state
-    entity_id: !input occupancy_sensors
-    from: 'off'
-    to: 'on'
-    for: !input occupancy_detected_delay
+- platform: state
+  entity_id: !input occupancy_sensors
+  from: 'off'
+  to: 'on'
+  for: !input occupancy_detected_delay
 
 variables:
   occupancy_sensors: !input occupancy_sensors
@@ -100,25 +100,25 @@ variables:
   night_brightness: !input night_brightness
 
 condition:
-  - condition: template
-    value_template: "{{ expand(illuminance_sensors) | map(attribute='state') | map('float') | min <= illuminance_threshold }}"
+- condition: template
+  value_template: "{{ expand(illuminance_sensors) | map(attribute='state') | map('float') | min <= illuminance_threshold }}"
 
 action:
-  - service: light.turn_on
-    data:
-      brightness_pct: >
-        {% set now=now().time() %}
-        {% set night_start_time=strptime(night_start,'%H:%M:%S').time() %}
-        {% set night_end_time=strptime(night_end,'%H:%M:%S').time() %}
-        {% if night_start_time < night_end_time %}
-          {{ night_brightness if now >= night_start_time and now < night_end_time else day_brightness }}
-        {% else %}
-          {{ night_brightness if now >= night_start_time or now < night_end_time else day_brightness }}
-        {% endif %}
-    target: !input lights
-  - wait_for_trigger:
-      - platform: template
-        value_template: "{{ expand(occupancy_sensors) | selectattr('state','eq','on') | list | length == 0 }}"
-        for: !input occupancy_cleared_delay
-  - service: light.turn_off
-    target: !input lights
+- service: light.turn_on
+  data:
+    brightness_pct: >
+      {% set now=now().time() %}
+      {% set night_start_time=strptime(night_start,'%H:%M:%S').time() %}
+      {% set night_end_time=strptime(night_end,'%H:%M:%S').time() %}
+      {% if night_start_time < night_end_time %}
+        {{ night_brightness if now >= night_start_time and now < night_end_time else day_brightness }}
+      {% else %}
+        {{ night_brightness if now >= night_start_time or now < night_end_time else day_brightness }}
+      {% endif %}
+  target: !input lights
+- wait_for_trigger:
+    - platform: template
+      value_template: "{{ expand(occupancy_sensors) | selectattr('state','eq','on') | list | length == 0 }}"
+      for: !input occupancy_cleared_delay
+- service: light.turn_off
+  target: !input lights
