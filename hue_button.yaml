@@ -9,9 +9,9 @@ blueprint:
       description: The buttons that toggle the lights
       selector:
         device:
-          integration: zha
-          manufacturer: Signify Netherlands B.V.
-          model: ROM001
+          filter:
+            - integration: zha
+              model: ROM001
           multiple: true
     lights:
       name: Lights
