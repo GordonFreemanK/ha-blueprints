@@ -1,0 +1,53 @@
+blueprint:
+  name: Opening activated light
+  description: Control lights based on opening
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/opening_activated_light.yaml
+  domain: automation
+  input:
+    opening_sensors:
+      name: Opening sensors
+      description: Which sensors should trigger the automation
+      selector:
+        entity:
+          device_class: opening
+          multiple: true
+    lights:
+      name: Lights
+      description: The lights to toggle
+      selector:
+        target:
+          entity:
+            domain: light
+    brightness:
+      name: Brightness
+      description: The brightness to turn on the light at
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: '%'
+      default: 80
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: state
+  entity_id: !input opening_sensors
+
+variables:
+  opening_sensors: !input opening_sensors
+  state: "{{ opening_sensors | select('is_state', 'on') | list | length > 0 }}"
+
+action:
+- if:
+  - condition: template
+    value_template: "{{ state }}"
+  then:
+  - service: light.turn_on
+    target: !input lights
+    data:
+      brightness_pct: !input brightness
+  else:
+  - service: light.turn_off
+    target: !input lights
