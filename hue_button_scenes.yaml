@@ -9,9 +9,8 @@ blueprint:
       description: The buttons that toggle the lights
       selector:
         device:
-          integration: zha
-          manufacturer: Signify Netherlands B.V.
-          model: ROM001
+          filter:
+          - model: Hue smart button (8718699693985)
           multiple: true
     scenes:
       name: Scenes
@@ -30,41 +29,37 @@ mode: restart
 max_exceeded: silent
 
 trigger:
-- platform: event
-  event_type: zha_event
-  event_data:
-    cluster_id: 64512
+- platform: mqtt
+  topic: zigbee2mqtt/+/action
 
 variables:
-  device_id: "{{ trigger.event.data.device_id }}"
-  command: "{{ trigger.event.data.command }}"
+  device_name: "{{ trigger.topic | regex_replace('zigbee2mqtt/(.+)/action','\\g<1>') }}"
+  payload: "{{ trigger.payload }}"
   buttons: !input buttons
   scenes: !input scenes
   scene_input: !input scene_input
-  entities: >
+  lights: >
     {% set scene_entities = expand(scenes) | map(attribute='attributes.entity_id') %}
     {{ expand(scene_entities) | map(attribute='entity_id') | list }}
 
 condition:
 - condition: template
-  value_template: "{{ device_id in buttons }}"
+  value_template: "{{ device_name in buttons | map('device_attr','name') }}"
 - condition: template
-  value_template: "{{ command in ['on_short_release','on_hold'] }}"
+  value_template: "{{ payload in ['on','off','brightness_step_up','brightness_step_down'] }}"
 
 action:
 - variables:
-    entities_light: "{{ expand(entities) | selectattr('domain','eq','light') | map(attribute='entity_id') | list }}"
-    entities_light_on: "{{ expand(entities_light) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
-    entities_switch: "{{ expand(entities) | selectattr('domain','eq','switch') | map(attribute='entity_id') | list }}"
-    entities_switch_on: "{{ expand(entities_switch) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
+    lights_on: "{{ expand(lights) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
 - choose:
-  - conditions: "{{ command == 'on_short_release' }}"
+  # on or off means short press: we cycle the scene
+  - conditions: "{{ payload in ['on','off'] }}"
     sequence:
     - variables:
         scene: >
           {% set ns = namespace(index=0) %}
           {% set scene = states(scene_input) %}
-          {% if (entities_light_on | length > 0) and (scene in scenes) %}
+          {% if (lights_on | length > 0) and (scene in scenes) %}
             {% set ns.index = (scenes.index(scene) + 1) % (scenes | length) %}
           {% endif %}
           {{ scenes[ns.index] }}
@@ -78,16 +73,14 @@ action:
         value: "{{ scene }}"
       target:
         entity_id: !input scene_input
-  - conditions: "{{ command == 'on_hold' }}"
+  # step up or step down mean long press: we switch the lights off
+  - conditions: "{{ payload in ['brightness_step_up','brightness_step_down'] }}"
     sequence:
     - service: light.turn_off
       target:
-        entity_id: "{{ entities_light_on }}"
+        entity_id: "{{ lights }}"
       data:
         transition: 1
-    - service: switch.turn_off
-      target:
-        entity_id: "{{ entities_switch_on }}"
     - service: input_text.set_value
       data:
         value: ''

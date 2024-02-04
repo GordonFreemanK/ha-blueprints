@@ -9,9 +9,8 @@ blueprint:
       description: The switches that toggle the lights
       selector:
         device:
-          integration: zha
-          manufacturer: Signify Netherlands B.V.
-          model: RWL022
+          filter:
+          - model: Hue dimmer switch (929002398602)
           multiple: true
     lights:
       name: Lights
@@ -33,26 +32,26 @@ mode: restart
 max_exceeded: silent
 
 trigger:
-- platform: event
-  event_type: zha_event
+- platform: mqtt
+  topic: zigbee2mqtt/+/action
 
 variables:
-  device_id: "{{ trigger.event.data.device_id }}"
-  command: "{{ trigger.event.data.command }}"
+  device_name: "{{ trigger.topic | regex_replace('zigbee2mqtt/(.+)/action','\\g<1>') }}"
+  payload: "{{ trigger.payload }}"
   switches: !input switches
   lights: !input lights
 
 condition:
 - condition: template
-  value_template: "{{ device_id in switches }}"
+  value_template: "{{ device_name in switches | map('device_attr','name') }}"
 - condition: template
-  value_template: "{{ command in ['on_short_release','step'] }}"
+  value_template: "{{ payload in ['on_press_release','up_press_release','up_hold','down_press_release','down_hold'] }}"
 
 action:
 - variables:
     lights_on: "{{ expand(lights) | selectattr('state','eq','on') | map(attribute='entity_id') | list }}"
 - choose:
-  - conditions: "{{ command == 'on_short_release' }}"
+  - conditions: "{{ payload == 'on_press_release' }}"
     sequence:
     - variables:
         state: "{{ lights_on | length > 0 }}"
@@ -63,12 +62,15 @@ action:
       - service: light.turn_off
         target:
           entity_id: "{{ lights }}"
+        data:
+          transition: 1
       else:
-        - service: light.turn_on
-          target:
-            entity_id: "{{ lights }}"
-          data:
-            brightness_pct: !input brightness
+      - service: light.turn_on
+        target:
+          entity_id: "{{ lights }}"
+        data:
+          transition: 1
+          brightness_pct: !input brightness
     - repeat:
         for_each: "{{ lights }}"
         sequence:
@@ -76,25 +78,19 @@ action:
           event_data:
             state: "{{ not state }}"
             entity_id: "{{ repeat.item }}"
-  - conditions: "{{ command == 'step' }}"
+  - conditions: "{{ payload in ['up_press_release','up_hold'] }}"
     sequence:
-    - variables:
-        step_mode: "{{ trigger.event.data.params.step_mode }}"
-        step_size: "{{ trigger.event.data.params.step_size }}"
-    - if:
-      - condition: template
-        value_template: "{{ step_mode == 'StepMode.Up' }}"
-      then:
-      - service: light.turn_on
-        target:
-          entity_id: "{{ lights_on }}"
-        data:
-          brightness_step: "{{ step_size }}"
-          transition: 1
-      else:
-      - service: light.turn_on
-        target:
-          entity_id: "{{ lights }}"
-        data:
-          brightness_step: "{{ -step_size }}"
-          transition: 1
+    - service: light.turn_on
+      target:
+        entity_id: "{{ lights_on }}"
+      data:
+        transition: 1
+        brightness_step: 32
+  - conditions: "{{ payload in ['down_press_release','down_hold'] }}"
+    sequence:
+    - service: light.turn_on
+      target:
+        entity_id: "{{ lights }}"
+      data:
+        transition: 1
+        brightness_step: -32

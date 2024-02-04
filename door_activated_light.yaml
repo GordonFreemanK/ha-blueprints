@@ -1,15 +1,15 @@
 blueprint:
-  name: Opening activated light
-  description: Control lights based on opening
-  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/opening_activated_light.yaml
+  name: Door activated light
+  description: Control lights based on door opening
+  source_url: https://github.com/GordonFreemanK/ha-blueprints/blob/main/door_activated_light.yaml
   domain: automation
   input:
-    opening_sensors:
-      name: Opening sensors
+    door_sensors:
+      name: Door sensors
       description: Which sensors should trigger the automation
       selector:
         entity:
-          device_class: opening
+          device_class: door
           multiple: true
     lights:
       name: Lights
@@ -33,11 +33,11 @@ max_exceeded: silent
 
 trigger:
 - platform: state
-  entity_id: !input opening_sensors
+  entity_id: !input door_sensors
 
 variables:
-  opening_sensors: !input opening_sensors
-  state: "{{ opening_sensors | select('is_state', 'on') | list | length > 0 }}"
+  door_sensors: !input door_sensors
+  state: "{{ door_sensors | select('is_state', 'on') | list | length > 0 }}"
 
 action:
 - if:
@@ -47,7 +47,10 @@ action:
   - service: light.turn_on
     target: !input lights
     data:
+      transition: 1
       brightness_pct: !input brightness
   else:
   - service: light.turn_off
     target: !input lights
+    data:
+      transition: 1
