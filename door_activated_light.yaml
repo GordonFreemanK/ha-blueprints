@@ -47,10 +47,10 @@ action:
   - service: light.turn_on
     target: !input lights
     data:
-      transition: 1
+      transition: 0
       brightness_pct: !input brightness
   else:
   - service: light.turn_off
     target: !input lights
     data:
-      transition: 1
+      transition: 0

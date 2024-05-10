@@ -67,7 +67,7 @@ action:
       target:
         entity_id: "{{ scene }}"
       data:
-        transition: 1
+        transition: 0
     - service: input_text.set_value
       data:
         value: "{{ scene }}"
@@ -80,7 +80,7 @@ action:
       target:
         entity_id: "{{ lights }}"
       data:
-        transition: 1
+        transition: 0
     - service: input_text.set_value
       data:
         value: ''

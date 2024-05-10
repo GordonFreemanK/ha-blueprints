@@ -57,13 +57,13 @@ action:
     target:
       entity_id: "{{ lights }}"
     data:
-      transition: 1
+      transition: 0
   else:
   - service: light.turn_on
     target:
       entity_id: "{{ lights }}"
     data:
-      transition: 1
+      transition: 0
       brightness_pct: !input brightness
 - repeat:
     for_each: "{{ lights }}"
