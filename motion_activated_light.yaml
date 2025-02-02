@@ -9,7 +9,7 @@ blueprint:
       description: Which sensors should trigger the automation
       selector:
         entity:
-          device_class: motion
+          device_class: occupancy
           multiple: true
     occupancy_detected_delay:
       name: Occupancy detected delay
