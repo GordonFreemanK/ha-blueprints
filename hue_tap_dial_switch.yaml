@@ -10,7 +10,7 @@ blueprint:
       selector:
         device:
           filter:
-          - model: Hue Tap dial switch (8719514440937/8719514440999)
+          - model: Hue Tap dial switch
           multiple: true
     button_1_lights:
       name: Button 1 lights

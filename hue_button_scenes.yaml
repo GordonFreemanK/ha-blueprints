@@ -10,7 +10,7 @@ blueprint:
       selector:
         device:
           filter:
-          - model: Hue smart button (8718699693985)
+          - model: Hue smart button
           multiple: true
     scenes:
       name: Scenes

@@ -10,7 +10,7 @@ blueprint:
       selector:
         device:
           filter:
-          - model: Hue dimmer switch (929002398602)
+          - model: Hue dimmer switch
           multiple: true
     lights:
       name: Lights
